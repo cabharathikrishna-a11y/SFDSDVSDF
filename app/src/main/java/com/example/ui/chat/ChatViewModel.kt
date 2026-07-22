@@ -20,10 +20,241 @@ enum class ChatDateRangeFilter(val label: String) {
     LAST_30_DAYS("30 Days")
 }
 
+enum class ChatOptionType {
+    STUDY_GROUP,
+    DIRECT_MESSAGE
+}
+
+data class ChatOption(
+    val id: String,
+    val name: String,
+    val type: ChatOptionType,
+    val description: String,
+    val memberUserId: String? = null,
+    val iconEmoji: String = "🎓",
+    val memberCount: Int = 0,
+    val isOnline: Boolean = false,
+    val roleTitle: String = ""
+)
+
 class ChatViewModel(
     private val repository: ChatRepository = ChatRepository(),
     val currentUserId: String = "user_me"
 ) : ViewModel() {
+
+    val studyGroups = listOf(
+        ChatOption(
+            id = "group_main",
+            name = "Android Dev Study Group",
+            type = ChatOptionType.STUDY_GROUP,
+            description = "Main Community • Jetpack Compose, Kotlin, Room & Architecture",
+            iconEmoji = "🎓",
+            memberCount = 42
+        ),
+        ChatOption(
+            id = "group_kotlin",
+            name = "Kotlin & Coroutines Circle",
+            type = ChatOptionType.STUDY_GROUP,
+            description = "Deep-dive into Coroutines, Flow, Generics & OOP",
+            iconEmoji = "📚",
+            memberCount = 28
+        ),
+        ChatOption(
+            id = "group_ai",
+            name = "AI Studio & Gemini Tech Circle",
+            type = ChatOptionType.STUDY_GROUP,
+            description = "Generative AI, Prompt Engineering & Agent Systems",
+            iconEmoji = "⚡",
+            memberCount = 35
+        ),
+        ChatOption(
+            id = "group_examprep",
+            name = "Exam Prep & Code Reviews",
+            type = ChatOptionType.STUDY_GROUP,
+            description = "Algorithms, System Design & Live Practice",
+            iconEmoji = "📝",
+            memberCount = 19
+        ),
+        ChatOption(
+            id = "group_lounge",
+            name = "General Student Lounge",
+            type = ChatOptionType.STUDY_GROUP,
+            description = "Casual tech chat, project showcases & study breaks",
+            iconEmoji = "💡",
+            memberCount = 56
+        )
+    )
+
+    val directMessageMembers = listOf(
+        ChatOption(
+            id = "dm_alex_dev",
+            name = "Alex Dev",
+            type = ChatOptionType.DIRECT_MESSAGE,
+            description = "Senior Android Engineer",
+            memberUserId = "alex_dev",
+            iconEmoji = "👨‍💻",
+            isOnline = true,
+            roleTitle = "Community Admin"
+        ),
+        ChatOption(
+            id = "dm_sarah_pm",
+            name = "Sarah PM",
+            type = ChatOptionType.DIRECT_MESSAGE,
+            description = "Product Manager",
+            memberUserId = "sarah_pm",
+            iconEmoji = "👩‍💼",
+            isOnline = true,
+            roleTitle = "Group Lead"
+        ),
+        ChatOption(
+            id = "dm_bharathi_k",
+            name = "Bharathi K",
+            type = ChatOptionType.DIRECT_MESSAGE,
+            description = "Fullstack & Mobile Developer",
+            memberUserId = "bharathi_k",
+            iconEmoji = "🧑‍💻",
+            isOnline = true,
+            roleTitle = "Peer Tutor"
+        ),
+        ChatOption(
+            id = "dm_dev_lead",
+            name = "Dev Lead",
+            type = ChatOptionType.DIRECT_MESSAGE,
+            description = "Tech Architect",
+            memberUserId = "dev_lead",
+            iconEmoji = "🛡️",
+            isOnline = false,
+            roleTitle = "Mentor"
+        ),
+        ChatOption(
+            id = "dm_community_user_1",
+            name = "Community User 1",
+            type = ChatOptionType.DIRECT_MESSAGE,
+            description = "Android Enthusiast",
+            memberUserId = "community_user_1",
+            iconEmoji = "🙋",
+            isOnline = false,
+            roleTitle = "Student Member"
+        ),
+        ChatOption(
+            id = "dm_community_user_2",
+            name = "Community User 2",
+            type = ChatOptionType.DIRECT_MESSAGE,
+            description = "Kotlin Developer",
+            memberUserId = "community_user_2",
+            iconEmoji = "🙋",
+            isOnline = true,
+            roleTitle = "Student Member"
+        ),
+        ChatOption(
+            id = "dm_qa_tester_3",
+            name = "QA Tester 3",
+            type = ChatOptionType.DIRECT_MESSAGE,
+            description = "Quality Assurance",
+            memberUserId = "qa_tester_3",
+            iconEmoji = "🧪",
+            isOnline = true,
+            roleTitle = "Tester"
+        )
+    )
+
+    private val _selectedChatOption = MutableStateFlow<ChatOption>(studyGroups[0])
+    val selectedChatOption: StateFlow<ChatOption> = _selectedChatOption.asStateFlow()
+
+    private val _showChatOptionsSheet = MutableStateFlow(false)
+    val showChatOptionsSheet: StateFlow<Boolean> = _showChatOptionsSheet.asStateFlow()
+
+    fun selectChatOption(option: ChatOption) {
+        _selectedChatOption.value = option
+        _showChatOptionsSheet.value = false
+        ensureSampleMessagesForOption(option)
+    }
+
+    fun openChatOptionsSheet() {
+        _showChatOptionsSheet.value = true
+    }
+
+    fun closeChatOptionsSheet() {
+        _showChatOptionsSheet.value = false
+    }
+
+    private fun ensureSampleMessagesForOption(option: ChatOption) {
+        if (option.type == ChatOptionType.DIRECT_MESSAGE) {
+            // No fake sample messages generated for DM channels. DMs rely strictly on real messages sent by users/members.
+            return
+        }
+        val current = _messages.value
+        val hasMessagesForOption = current.any { msg ->
+            if (option.id == "group_main") true
+            else msg.text.contains("[GROUP:${option.id}]")
+        }
+
+        if (!hasMessagesForOption) {
+            val sampleMsgs = mutableListOf<ChatMessage>()
+            val nowTime = "Just now"
+            val baseId = System.currentTimeMillis()
+
+            when (option.id) {
+                "group_kotlin" -> {
+                    sampleMsgs.add(
+                        ChatMessage(
+                            id = baseId + 1,
+                            senderId = "alex_dev",
+                            text = "Welcome to the Kotlin & Coroutines Circle! 📚\n[GROUP:group_kotlin]\nFeel free to ask questions about StateFlow, SharedFlow, and Structured Concurrency.",
+                            createdAt = nowTime,
+                            status = "READ"
+                        )
+                    )
+                    sampleMsgs.add(
+                        ChatMessage(
+                            id = baseId + 2,
+                            senderId = "bharathi_k",
+                            text = "Excited to study together! Working on Kotlin Flow transformations this week.\n[GROUP:group_kotlin]",
+                            createdAt = nowTime,
+                            status = "READ"
+                        )
+                    )
+                }
+                "group_ai" -> {
+                    sampleMsgs.add(
+                        ChatMessage(
+                            id = baseId + 1,
+                            senderId = "sarah_pm",
+                            text = "Welcome to the AI Studio & Gemini Tech Circle! ⚡\n[GROUP:group_ai]\nWe discuss Gemini APIs, prompt engineering, and AI features in Android.",
+                            createdAt = nowTime,
+                            status = "READ"
+                        )
+                    )
+                }
+                "group_examprep" -> {
+                    sampleMsgs.add(
+                        ChatMessage(
+                            id = baseId + 1,
+                            senderId = "dev_lead",
+                            text = "Welcome to Exam Prep & Code Reviews! 📝\n[GROUP:group_examprep]\nToday's topic: Data Structures & System Design practice.",
+                            createdAt = nowTime,
+                            status = "READ"
+                        )
+                    )
+                }
+                "group_lounge" -> {
+                    sampleMsgs.add(
+                        ChatMessage(
+                            id = baseId + 1,
+                            senderId = "community_user_2",
+                            text = "Hey everyone! Welcome to the Student Lounge 💡\n[GROUP:group_lounge]\nShare what you are building today!",
+                            createdAt = nowTime,
+                            status = "READ"
+                        )
+                    )
+                }
+            }
+
+            if (sampleMsgs.isNotEmpty()) {
+                _messages.value = (current + sampleMsgs).distinctBy { if (it.id != 0L) it.id else it.hashCode() }
+            }
+        }
+    }
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
@@ -155,12 +386,27 @@ class ChatViewModel(
         _messages,
         _searchQuery,
         _selectedSenderFilter,
-        _selectedDateRangeFilter
-    ) { msgList, query, sender, dateFilter ->
+        _selectedDateRangeFilter,
+        _selectedChatOption
+    ) { msgList, query, sender, dateFilter, option ->
         val trimmedQuery = query.trim().lowercase()
         val now = ZonedDateTime.now(ZoneId.systemDefault())
 
         msgList.filter { msg ->
+            // 0. Channel / Direct Message Isolation
+            val matchesOption = if (option.type == ChatOptionType.STUDY_GROUP) {
+                if (option.id == "group_main") {
+                    !msg.text.contains("[GROUP:") && !msg.text.contains("[DM:")
+                } else {
+                    msg.text.contains("[GROUP:${option.id}]")
+                }
+            } else {
+                val targetMember = option.memberUserId ?: ""
+                msg.text.contains("[DM:$targetMember]") ||
+                        (msg.senderId == targetMember && (msg.replyToSender == currentUserId || msg.text.contains("[DM:$currentUserId]") || msg.text.contains("[DM:$targetMember]"))) ||
+                        (msg.senderId == currentUserId && (msg.replyToSender == targetMember || msg.text.contains("[DM:$targetMember]")))
+            }
+
             // 1. Keyword search (matches message text or sender name)
             val matchesKeyword = if (trimmedQuery.isEmpty()) true else {
                 msg.text.lowercase().contains(trimmedQuery) ||
@@ -180,7 +426,7 @@ class ChatViewModel(
                 ChatDateRangeFilter.LAST_30_DAYS -> isWithinDays(msg.createdAt, now, 30)
             }
 
-            matchesKeyword && matchesSender && matchesDate
+            matchesOption && matchesKeyword && matchesSender && matchesDate
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
@@ -198,6 +444,7 @@ class ChatViewModel(
 
     init {
         loadInitialMessagesAndSubscribe()
+        listenToRtdbChatHistory()
     }
 
     fun loadInitialMessagesAndSubscribe() {
@@ -284,6 +531,104 @@ class ChatViewModel(
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            }
+        }
+    }
+
+    private fun listenToRtdbChatHistory() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val context = com.example.MainApplication.instance
+                val dbUrl = com.example.api.FirebaseConfig.getDatabaseUrl(context)
+                val database = com.google.firebase.database.FirebaseDatabase.getInstance(dbUrl)
+                val chatRef = database.getReference("community_chat/messages")
+
+                chatRef.addValueEventListener(object : com.google.firebase.database.ValueEventListener {
+                    override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                        if (snapshot.exists()) {
+                            val rtdbList = mutableListOf<ChatMessage>()
+                            for (child in snapshot.children) {
+                                try {
+                                    val id = child.child("id").getValue(Long::class.java) ?: (child.key?.toLongOrNull() ?: 0L)
+                                    val senderId = child.child("senderId").getValue(String::class.java) ?: "community_user"
+                                    val text = child.child("text").getValue(String::class.java) ?: ""
+                                    val createdAt = child.child("createdAt").getValue(String::class.java) ?: "Just now"
+                                    val status = child.child("status").getValue(String::class.java) ?: "SENT"
+                                    val isPinned = child.child("isPinned").getValue(Boolean::class.java) ?: false
+                                    val reactions = child.child("reactions").getValue(String::class.java) ?: ""
+                                    val replyToId = child.child("replyToId").getValue(Long::class.java)
+                                    val replyToText = child.child("replyToText").getValue(String::class.java)
+                                    val replyToSender = child.child("replyToSender").getValue(String::class.java)
+
+                                    if (text.isNotBlank() && id != 0L) {
+                                        rtdbList.add(
+                                            ChatMessage(
+                                                id = id,
+                                                senderId = senderId,
+                                                text = text,
+                                                createdAt = createdAt,
+                                                status = status,
+                                                isPinned = isPinned,
+                                                reactions = reactions,
+                                                replyToId = replyToId,
+                                                replyToText = replyToText,
+                                                replyToSender = replyToSender
+                                            )
+                                        )
+                                    }
+                                } catch (e: Exception) {
+                                    android.util.Log.e("ChatViewModel", "Error parsing RTDB chat msg", e)
+                                }
+                            }
+
+                            if (rtdbList.isNotEmpty()) {
+                                val currentList = _messages.value
+                                val merged = (currentList + rtdbList).distinctBy { if (it.id != 0L) it.id else it.hashCode() }
+                                _messages.value = merged
+
+                                viewModelScope.launch(Dispatchers.IO) {
+                                    try {
+                                        repository.insertMessagesToCache(rtdbList)
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("ChatViewModel", "Failed caching RTDB messages", e)
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    override fun onCancelled(error: com.google.firebase.database.DatabaseError) {
+                        android.util.Log.e("ChatViewModel", "RTDB Chat listener error: ${error.message}")
+                    }
+                })
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "Failed setting up RTDB chat listener", e)
+            }
+        }
+    }
+
+    private fun syncMessageToRtdb(message: ChatMessage) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val context = com.example.MainApplication.instance
+                val dbUrl = com.example.api.FirebaseConfig.getDatabaseUrl(context)
+                val database = com.google.firebase.database.FirebaseDatabase.getInstance(dbUrl)
+                val msgKey = if (message.id != 0L) message.id.toString() else System.currentTimeMillis().toString()
+                val payload = mapOf(
+                    "id" to (if (message.id != 0L) message.id else msgKey.toLongOrNull() ?: 0L),
+                    "senderId" to message.senderId,
+                    "text" to message.text,
+                    "createdAt" to message.createdAt,
+                    "status" to message.status,
+                    "isPinned" to message.isPinned,
+                    "reactions" to message.reactions,
+                    "replyToId" to message.replyToId,
+                    "replyToText" to message.replyToText,
+                    "replyToSender" to message.replyToSender
+                )
+                database.getReference("community_chat/messages").child(msgKey).setValue(payload)
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "Failed syncing message to RTDB", e)
             }
         }
     }
@@ -500,30 +845,46 @@ class ChatViewModel(
         val replyMsg = _replyingToMessage.value
         _replyingToMessage.value = null
 
+        val currentOption = _selectedChatOption.value
+        val formattedText = when {
+            currentOption.type == ChatOptionType.STUDY_GROUP && currentOption.id != "group_main" -> {
+                if (!trimmed.contains("[GROUP:")) "$trimmed\n[GROUP:${currentOption.id}]" else trimmed
+            }
+            currentOption.type == ChatOptionType.DIRECT_MESSAGE -> {
+                val targetMember = currentOption.memberUserId ?: ""
+                if (!trimmed.contains("[DM:")) "$trimmed\n[DM:$targetMember]" else trimmed
+            }
+            else -> trimmed
+        }
+
+        val targetRecipient = if (currentOption.type == ChatOptionType.DIRECT_MESSAGE) currentOption.memberUserId else replyMsg?.senderId
+
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 val sent = repository.sendMessage(
-                    text = trimmed,
+                    text = formattedText,
                     senderId = currentUserId,
                     replyToId = replyMsg?.id,
                     replyToText = replyMsg?.text,
-                    replyToSender = replyMsg?.senderId
+                    replyToSender = targetRecipient
                 )
                 _messages.value = (_messages.value + sent).distinctBy { if (it.id != 0L) it.id else it.hashCode() }
+                syncMessageToRtdb(sent)
             } catch (e: Exception) {
                 // Optimistic local fallback for smooth user feedback
                 val tempMsg = ChatMessage(
                     id = System.currentTimeMillis(),
                     senderId = currentUserId,
-                    text = trimmed,
+                    text = formattedText,
                     status = "PENDING",
                     createdAt = "Just now",
                     replyToId = replyMsg?.id,
                     replyToText = replyMsg?.text,
-                    replyToSender = replyMsg?.senderId
+                    replyToSender = targetRecipient
                 )
                 _messages.value = _messages.value + tempMsg
                 _errorMessage.value = "Message sent locally (${e.localizedMessage ?: "Offline"})"
+                syncMessageToRtdb(tempMsg)
             }
         }
     }

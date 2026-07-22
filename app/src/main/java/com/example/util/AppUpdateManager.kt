@@ -197,6 +197,7 @@ object AppUpdateManager {
     fun checkAndNotifyUpgradeComplete(context: Context): Int? {
         val prefs = context.getSharedPreferences("app_prefs", Context.MODE_PRIVATE)
         val lastKnown = prefs.getInt("pref_last_known_version_code", -1)
+        val lastCelebrated = prefs.getInt("pref_last_celebrated_version", -1)
         val current = getCurrentVersionCode(context)
         
         // Retrieve last known update time of the package to detect fresh compilation/reinstall in AI Studio or store
@@ -227,40 +228,40 @@ object AppUpdateManager {
             upgradedToVersion = installTarget
             Log.i(TAG, "Upgrade detected via Firebase install target! Running Firebase version is now Build $installTarget")
         }
+
+        if (current > lastKnown) {
+            upgradeDetected = true
+            upgradedToVersion = current
+            setRunningFirebaseVersion(context, current)
+            Log.i(TAG, "Upgrade detected via Package Version Code! Upgraded from Build $lastKnown to Build $current")
+        }
         
+        // Handle initial run / first launch
         if (lastKnown == -1) {
             prefs.edit().putInt("pref_last_known_version_code", current).apply()
             if (currentUpdateTime > 0L) {
                 prefs.edit().putLong("pref_last_known_update_time", currentUpdateTime).apply()
             }
-            if (upgradeDetected) {
+            if (upgradeDetected && upgradedToVersion > lastCelebrated) {
+                prefs.edit().putInt("pref_last_celebrated_version", upgradedToVersion).apply()
                 clearPendingUpdateVersion(context)
                 sendUpgradeNotification(context, upgradedToVersion)
                 return upgradedToVersion
             }
+            // Record current version as already celebrated on initial install so clean install doesn't pop up dialog
+            prefs.edit().putInt("pref_last_celebrated_version", current).apply()
             return null
         }
         
-        if (current > lastKnown || upgradeDetected || packageReinstalled) {
-            Log.i(TAG, "Upgrade or reinstall condition met: current > lastKnown=${current > lastKnown}, upgradeDetected=$upgradeDetected, packageReinstalled=$packageReinstalled")
-            
-            prefs.edit().putInt("pref_last_known_version_code", current).apply()
-            if (currentUpdateTime > 0L) {
-                prefs.edit().putLong("pref_last_known_update_time", currentUpdateTime).apply()
-            }
-            
-            if (current > lastKnown) {
-                Log.i(TAG, "Upgrade detected via Package Version Code! Upgraded from Build $lastKnown to Build $current")
-                setRunningFirebaseVersion(context, current)
-                upgradedToVersion = current
-            } else if (packageReinstalled) {
-                Log.i(TAG, "Upgrade/Reinstall synchronized via Package Last Update Time. Running Firebase version is updated.")
-                setRunningFirebaseVersion(context, maxOf(current, installTarget, runningFirebase))
-            }
-            
+        // Always persist the updated version code and lastUpdateTime
+        prefs.edit().putInt("pref_last_known_version_code", current).apply()
+        if (currentUpdateTime > 0L) {
+            prefs.edit().putLong("pref_last_known_update_time", currentUpdateTime).apply()
+        }
+
+        // Clean up old downloaded APKs if package was reinstalled or upgraded
+        if (upgradeDetected || packageReinstalled) {
             clearPendingUpdateVersion(context)
-            
-            // Delete all downloaded APKs and clean up updates cache folder
             try {
                 val updateDir = File(context.cacheDir, "updates")
                 if (updateDir.exists()) {
@@ -274,14 +275,13 @@ object AppUpdateManager {
                 Log.e(TAG, "Failed to clean updates folder", e)
             }
             setReadyApkPath(context, null)
-            
-            sendUpgradeNotification(context, upgradedToVersion)
-            return upgradedToVersion
         }
         
-        // Ensure we persist the current update time if it was never recorded
-        if (currentUpdateTime > 0L && lastKnownUpdateTime == 0L) {
-            prefs.edit().putLong("pref_last_known_update_time", currentUpdateTime).apply()
+        // Strictly trigger upgrade notification & popup ONCE only if an actual newer version was installed!
+        if (upgradeDetected && upgradedToVersion > lastCelebrated) {
+            prefs.edit().putInt("pref_last_celebrated_version", upgradedToVersion).apply()
+            sendUpgradeNotification(context, upgradedToVersion)
+            return upgradedToVersion
         }
         
         return null

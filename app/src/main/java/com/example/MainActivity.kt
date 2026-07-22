@@ -293,6 +293,10 @@ class MainActivity : ComponentActivity() {
 
                 var showCelebrationDialog by remember { mutableStateOf(false) }
                 var updatedVersionCode by remember { mutableStateOf(0) }
+                val prefs = remember { context.getSharedPreferences("app_prefs", android.content.Context.MODE_PRIVATE) }
+                var showChatFeatureNoticeDialog by remember {
+                    mutableStateOf(!prefs.getBoolean("has_seen_chat_feature_notice_v2", false))
+                }
 
                 LaunchedEffect(Unit) {
                     val upgradedTo = com.example.util.AppUpdateManager.checkAndNotifyUpgradeComplete(context)
@@ -382,6 +386,69 @@ class MainActivity : ComponentActivity() {
                             }
                         },
                         containerColor = Color(0xFF101014),
+                        shape = RoundedCornerShape(16.dp)
+                    )
+                }
+
+                if (showChatFeatureNoticeDialog) {
+                    AlertDialog(
+                        onDismissRequest = {
+                            prefs.edit().putBoolean("has_seen_chat_feature_notice_v2", true).apply()
+                            showChatFeatureNoticeDialog = false
+                        },
+                        title = {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Forum,
+                                    contentDescription = "Chat Icon",
+                                    tint = com.example.ui.theme.WaterBlue,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                                Spacer(modifier = Modifier.width(10.dp))
+                                Text("Try Out New Chat! 💬", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
+                            }
+                        },
+                        text = {
+                            Column {
+                                Text(
+                                    "Chat is now conveniently placed as the 2nd tab for fast access!",
+                                    color = Color.White,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 14.sp
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    "• Access Full History: Whether you update late or join the community later, all past study group messages & DM history are automatically synchronized.\n" +
+                                    "• Study Circles & DMs: Collaborate with peers, share file attachments, and record voice notes.\n" +
+                                    "• Tap below to try out the new Chat feature right now!",
+                                    color = Color.LightGray,
+                                    fontSize = 13.sp
+                                )
+                            }
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    prefs.edit().putBoolean("has_seen_chat_feature_notice_v2", true).apply()
+                                    showChatFeatureNoticeDialog = false
+                                    viewModel.navigateTo(Screen.MESSAGES)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = com.example.ui.theme.WaterBlue)
+                            ) {
+                                Text("Try Chat Now 💬", color = Color.Black, fontWeight = FontWeight.Bold)
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(
+                                onClick = {
+                                    prefs.edit().putBoolean("has_seen_chat_feature_notice_v2", true).apply()
+                                    showChatFeatureNoticeDialog = false
+                                }
+                            ) {
+                                Text("Dismiss", color = Color.Gray)
+                            }
+                        },
+                        containerColor = Color(0xFF14161F),
                         shape = RoundedCornerShape(16.dp)
                     )
                 }

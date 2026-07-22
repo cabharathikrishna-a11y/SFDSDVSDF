@@ -134,6 +134,61 @@ fun resolveAuthorName(context: android.content.Context): String {
     return "Study Group Member"
 }
 
+fun createAndPackageSharedJournalFolder(
+    context: android.content.Context,
+    groupId: String,
+    entry: JournalEntry,
+    authorName: String
+): Pair<String, String> {
+    val sanitizeGroupId = groupId.lowercase().replace(Regex("[^a-z0-9_]"), "_")
+    val folderDir = java.io.File(context.filesDir, "shared_journal_folders/$sanitizeGroupId/entry_${entry.id}")
+    if (!folderDir.exists()) {
+        folderDir.mkdirs()
+    }
+
+    // 1. Create main text file containing text, date, and author metadata
+    val textFile = java.io.File(folderDir, "entry_details.txt")
+    val sb = StringBuilder()
+    sb.append("TITLE: ").append(entry.title).append("\n")
+    sb.append("DATE: ").append(entry.dateString).append("\n")
+    sb.append("TIMESTAMP: ").append(entry.timestamp).append("\n")
+    sb.append("AUTHOR: ").append(authorName).append("\n")
+    sb.append("GROUP: ").append(sanitizeGroupId).append("\n")
+    sb.append("ATTACHMENTS: ").append(entry.attachmentsJson).append("\n")
+    sb.append("--- BODY TEXT ---\n")
+    sb.append(entry.text)
+    textFile.writeText(sb.toString())
+
+    // 2. Create structured meta.json for quick folder indexing
+    val metaFile = java.io.File(folderDir, "meta.json")
+    val safeTitle = entry.title.replace("\"", "\\\"").replace("\n", " ")
+    val safeAuthor = authorName.replace("\"", "\\\"").replace("\n", " ")
+    val safeAttachments = entry.attachmentsJson.replace("\"", "\\\"")
+    val metaJson = """
+        {
+          "id": ${entry.id},
+          "title": "$safeTitle",
+          "dateString": "${entry.dateString}",
+          "timestamp": ${entry.timestamp},
+          "author": "$safeAuthor",
+          "groupId": "$sanitizeGroupId",
+          "attachmentsJson": "$safeAttachments",
+          "folderPath": "shared_journal_folders/$sanitizeGroupId/entry_${entry.id}"
+        }
+    """.trimIndent()
+    metaFile.writeText(metaJson)
+
+    // 3. Ensure attachments directory exists inside entry folder
+    val attachmentsDir = java.io.File(folderDir, "attachments")
+    if (!attachmentsDir.exists()) {
+        attachmentsDir.mkdirs()
+    }
+
+    val folderLink = "file://${folderDir.absolutePath}"
+    val relativeFolderPath = "shared_journal_folders/$sanitizeGroupId/entry_${entry.id}"
+    return Pair(folderLink, relativeFolderPath)
+}
+
 fun syncSharedJournalEntryToRtdb(
     context: android.content.Context,
     groupId: String,
@@ -148,21 +203,35 @@ fun syncSharedJournalEntryToRtdb(
         
         val authorName = resolveAuthorName(context)
         
+        // Package entry into a structured folder with files (entry_details.txt, meta.json, attachments/)
+        val (folderLink, relativeFolderPath) = createAndPackageSharedJournalFolder(context, groupId, entry, authorName)
+
         val attachmentsWithAuthor = if (!entry.attachmentsJson.contains("author:")) {
             if (entry.attachmentsJson.isNotEmpty()) "${entry.attachmentsJson};;author:$authorName" else "author:$authorName"
         } else {
             entry.attachmentsJson
         }
+
+        val attachmentsWithFolder = if (!attachmentsWithAuthor.contains("folderLink:")) {
+            if (attachmentsWithAuthor.isNotEmpty()) "$attachmentsWithAuthor;;folderLink:$folderLink" else "folderLink:$folderLink"
+        } else attachmentsWithAuthor
+
+        val snippet = if (entry.text.length > 80) entry.text.take(80) + "..." else entry.text
         
+        // Store lightweight metadata & folder link reference in RTDB instead of long data branches
         val map = mapOf(
             "id" to entry.id,
             "title" to entry.title,
-            "text" to entry.text,
+            "text" to snippet, // Short snippet stored in RTDB node
+            "textSnippet" to snippet,
             "dateString" to entry.dateString,
             "timestamp" to entry.timestamp,
-            "attachmentsJson" to attachmentsWithAuthor,
+            "attachmentsJson" to attachmentsWithFolder,
             "author" to authorName,
-            "groupId" to sanitizeGroupId
+            "groupId" to sanitizeGroupId,
+            "folderLink" to folderLink,
+            "folderPath" to relativeFolderPath,
+            "hasFolderPayload" to true
         )
         database.getReference("shared_journals/$sanitizeGroupId/entries/${entry.id}").setValue(map)
     } catch (e: Exception) {
@@ -182,6 +251,12 @@ fun deleteSharedJournalEntryFromRtdb(
         val sanitizeGroupId = groupId.lowercase().replace(Regex("[^a-z0-9_]"), "_")
         val database = com.google.firebase.database.FirebaseDatabase.getInstance(dbUrl)
         database.getReference("shared_journals/$sanitizeGroupId/entries/$entryId").removeValue()
+
+        // Clean up local entry folder
+        val folderDir = java.io.File(context.filesDir, "shared_journal_folders/$sanitizeGroupId/entry_$entryId")
+        if (folderDir.exists()) {
+            folderDir.deleteRecursively()
+        }
     } catch (e: Exception) {
         android.util.Log.e("JournalBookView", "Failed to delete from RTDB", e)
     }
@@ -231,17 +306,55 @@ fun JournalBookView(viewModel: AppViewModel, modifier: Modifier = Modifier) {
                                 val id = child.child("id").getValue(Long::class.java)?.toInt() 
                                     ?: child.key?.hashCode() ?: 0
                                 val title = child.child("title").getValue(String::class.java) ?: ""
-                                val text = child.child("text").getValue(String::class.java) ?: ""
+                                val rtdbText = child.child("text").getValue(String::class.java) ?: ""
+                                val textSnippet = child.child("textSnippet").getValue(String::class.java) ?: ""
                                 val dateString = child.child("dateString").getValue(String::class.java) ?: ""
                                 val timestamp = child.child("timestamp").getValue(Long::class.java) ?: System.currentTimeMillis()
                                 val attachmentsJson = child.child("attachmentsJson").getValue(String::class.java) ?: ""
                                 val author = child.child("author").getValue(String::class.java) ?: ""
+                                val folderLink = child.child("folderLink").getValue(String::class.java) ?: ""
+                                val folderPath = child.child("folderPath").getValue(String::class.java) ?: ""
                                 
+                                var fullText = if (rtdbText.isNotEmpty()) rtdbText else textSnippet
+
+                                // Attempt to load complete entry body text from entry_details.txt inside folder
+                                val targetFolder = if (folderPath.isNotEmpty()) {
+                                    java.io.File(context.filesDir, folderPath)
+                                } else if (folderLink.startsWith("file://")) {
+                                    java.io.File(folderLink.removePrefix("file://"))
+                                } else null
+
+                                if (targetFolder != null && targetFolder.exists()) {
+                                    val detailsFile = java.io.File(targetFolder, "entry_details.txt")
+                                    if (detailsFile.exists()) {
+                                        val fileContent = detailsFile.readText()
+                                        val marker = "--- BODY TEXT ---\n"
+                                        if (fileContent.contains(marker)) {
+                                            fullText = fileContent.substringAfter(marker)
+                                        } else {
+                                            fullText = fileContent
+                                        }
+                                    }
+                                } else if (targetFolder != null) {
+                                    // Cache folder file locally for smooth viewing
+                                    try {
+                                        targetFolder.mkdirs()
+                                        val detailsFile = java.io.File(targetFolder, "entry_details.txt")
+                                        detailsFile.writeText("TITLE: $title\nDATE: $dateString\nAUTHOR: $author\n--- BODY TEXT ---\n$fullText")
+                                    } catch (e: Exception) {
+                                        android.util.Log.e("JournalBookView", "Failed to write local folder cache", e)
+                                    }
+                                }
+
                                 val combinedAttachments = if (author.isNotEmpty() && !attachmentsJson.contains("author:")) {
                                     if (attachmentsJson.isNotEmpty()) "$attachmentsJson;;author:$author" else "author:$author"
                                 } else attachmentsJson
-                                
-                                list.add(JournalEntry(id, title, text, dateString, timestamp, combinedAttachments))
+
+                                val attachmentsWithFolder = if (folderLink.isNotEmpty() && !combinedAttachments.contains("folderLink:")) {
+                                    if (combinedAttachments.isNotEmpty()) "$combinedAttachments;;folderLink:$folderLink" else "folderLink:$folderLink"
+                                } else combinedAttachments
+
+                                list.add(JournalEntry(id, title, fullText, dateString, timestamp, attachmentsWithFolder))
                             } catch (e: Exception) {
                                 android.util.Log.e("JournalBookView", "Error parsing shared entry", e)
                             }

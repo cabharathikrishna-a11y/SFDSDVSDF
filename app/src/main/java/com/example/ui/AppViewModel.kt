@@ -439,7 +439,7 @@ class AppViewModel(
 
     // Default tab list
     val defaultScreens = listOf(
-        Screen.DEEPA_AI, Screen.KEEP_NOTES, Screen.HEALTH, Screen.SEARCH, Screen.TASKS, Screen.CALENDAR, Screen.TIMER, Screen.ARENA, Screen.HABITS, Screen.COUNTDOWN, Screen.JOURNAL, Screen.CONTACTS, Screen.MESSAGES, Screen.FILE_EXPLORER, Screen.FINANCES, Screen.ANALYTICS, Screen.SETTINGS
+        Screen.DEEPA_AI, Screen.MESSAGES, Screen.KEEP_NOTES, Screen.HEALTH, Screen.SEARCH, Screen.TASKS, Screen.CALENDAR, Screen.TIMER, Screen.ARENA, Screen.HABITS, Screen.COUNTDOWN, Screen.JOURNAL, Screen.CONTACTS, Screen.FILE_EXPLORER, Screen.FINANCES, Screen.ANALYTICS, Screen.SETTINGS
     )
 
     // Dynamic Tab Order State
@@ -1752,6 +1752,13 @@ class AppViewModel(
                 val parsedList = savedOrder.split(",").map { Screen.valueOf(it) }
                 // Ensure all default screens are present in the list (in case of new additions)
                 val mergedList = parsedList.toMutableList()
+                if (!mergedList.contains(Screen.MESSAGES)) {
+                    if (mergedList.size >= 1) {
+                        mergedList.add(1, Screen.MESSAGES)
+                    } else {
+                        mergedList.add(Screen.MESSAGES)
+                    }
+                }
                 defaultScreens.forEach { screen ->
                     if (!mergedList.contains(screen)) {
                         mergedList.add(screen)
@@ -5869,7 +5876,27 @@ class AppViewModel(
 
     private val lastSyncTimestamps = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
+    fun isSharedOrFriendFolder(folderPath: String): Boolean {
+        val cleanP = folderPath.trim()
+        if (cleanP.equals("General", ignoreCase = true) || cleanP.isBlank()) {
+            return false
+        }
+        val lowerP = cleanP.lowercase()
+        return lowerP.contains("friend") ||
+               lowerP.contains("ca inter") ||
+               lowerP.contains("ca_inter") ||
+               lowerP.contains("shared") ||
+               lowerP.startsWith("friends/") ||
+               lowerP.startsWith("shared/") ||
+               lowerP.contains("group")
+    }
+
     fun syncFolderWithFirebase(folderName: String) {
+        if (!isSharedOrFriendFolder(folderName)) {
+            android.util.Log.d("FirebaseSync", "Folder $folderName is a private folder. Skipping RTDB sync.")
+            return
+        }
+
         val lastSync = lastSyncTimestamps[folderName] ?: 0L
         val now = System.currentTimeMillis()
         if (now - lastSync < 30000) {
@@ -6019,28 +6046,32 @@ class AppViewModel(
 
             // Define the helper to save metadata to RTDB
             val writeMetadataToRtdb = { fileToWrite: AppFile ->
-                try {
-                    val dbUrl = com.example.api.FirebaseConfig.getDatabaseUrl(context)
-                    val database = com.google.firebase.database.FirebaseDatabase.getInstance(dbUrl)
-                    val cleanPath = path.ifBlank { "General" }
-                    val folderRef = database.getReference("files").child(cleanPath)
-                    val focusTimerFolderRef = database.getReference("FOCUS_TIMMER").child("FILES").child(cleanPath)
-                    val fileId = java.util.UUID.randomUUID().toString().replace("-", "")
+                if (!isSharedOrFriendFolder(fileToWrite.path)) {
+                    android.util.Log.d("FirebaseSync", "File ${fileToWrite.name} in path '${fileToWrite.path}' is private. Skipping RTDB metadata write.")
+                } else {
+                    try {
+                        val dbUrl = com.example.api.FirebaseConfig.getDatabaseUrl(context)
+                        val database = com.google.firebase.database.FirebaseDatabase.getInstance(dbUrl)
+                        val cleanPath = path.ifBlank { "General" }
+                        val folderRef = database.getReference("files").child(cleanPath)
+                        val focusTimerFolderRef = database.getReference("FOCUS_TIMMER").child("FILES").child(cleanPath)
+                        val fileId = java.util.UUID.randomUUID().toString().replace("-", "")
 
-                    val fileMap = mapOf(
-                        "name" to fileToWrite.name,
-                        "path" to fileToWrite.path,
-                        "size" to fileToWrite.size,
-                        "mimeType" to fileToWrite.mimeType,
-                        "uriString" to fileToWrite.uriString,
-                        "timestamp" to fileToWrite.timestamp,
-                        "isFavorite" to fileToWrite.isFavorite
-                    )
-                    folderRef.child(fileId).setValue(fileMap)
-                    focusTimerFolderRef.child(fileId).setValue(fileMap)
-                    android.util.Log.i("FirebaseSync", "Successfully saved file metadata to RTDB: files/$cleanPath/$fileId")
-                } catch (e: Exception) {
-                    android.util.Log.e("FirebaseSync", "Failed to write file metadata to RTDB", e)
+                        val fileMap = mapOf(
+                            "name" to fileToWrite.name,
+                            "path" to fileToWrite.path,
+                            "size" to fileToWrite.size,
+                            "mimeType" to fileToWrite.mimeType,
+                            "uriString" to fileToWrite.uriString,
+                            "timestamp" to fileToWrite.timestamp,
+                            "isFavorite" to fileToWrite.isFavorite
+                        )
+                        folderRef.child(fileId).setValue(fileMap)
+                        focusTimerFolderRef.child(fileId).setValue(fileMap)
+                        android.util.Log.i("FirebaseSync", "Successfully saved file metadata to RTDB: files/$cleanPath/$fileId")
+                    } catch (e: Exception) {
+                        android.util.Log.e("FirebaseSync", "Failed to write file metadata to RTDB", e)
+                    }
                 }
             }
 
@@ -6182,28 +6213,31 @@ class AppViewModel(
                     android.util.Log.e("GoogleDriveSync", "Failed to delete file from Google Drive", e)
                 }
 
-                try {
-                    val dbUrl = com.example.api.FirebaseConfig.getDatabaseUrl(getApplication())
-                    val database = com.google.firebase.database.FirebaseDatabase.getInstance(dbUrl)
-                    val cleanPath = file.path.ifBlank { "General" }
-                    val folderRef = database.getReference("files").child(cleanPath)
+                viewModelScope.launch(Dispatchers.IO) {
+                    if (!isSharedOrFriendFolder(file.path)) return@launch
+                    try {
+                        val dbUrl = com.example.api.FirebaseConfig.getDatabaseUrl(getApplication())
+                        val database = com.google.firebase.database.FirebaseDatabase.getInstance(dbUrl)
+                        val cleanPath = file.path.ifBlank { "General" }
+                        val folderRef = database.getReference("files").child(cleanPath)
 
-                    folderRef.get().addOnCompleteListener { task ->
-                        if (task.isSuccessful) {
-                            val snapshot = task.result
-                            if (snapshot != null && snapshot.exists()) {
-                                for (child in snapshot.children) {
-                                    val uri = child.child("uriString").getValue(String::class.java)
-                                    if (uri == file.uriString) {
-                                        child.ref.removeValue()
-                                        android.util.Log.i("FirebaseSync", "Deleted file from RTDB: files/$cleanPath/${child.key}")
+                        folderRef.get().addOnCompleteListener { task ->
+                            if (task.isSuccessful) {
+                                val snapshot = task.result
+                                if (snapshot != null && snapshot.exists()) {
+                                    for (child in snapshot.children) {
+                                        val uri = child.child("uriString").getValue(String::class.java)
+                                        if (uri == file.uriString) {
+                                            child.ref.removeValue()
+                                            android.util.Log.i("FirebaseSync", "Deleted file from RTDB: files/$cleanPath/${child.key}")
+                                        }
                                     }
                                 }
                             }
                         }
+                    } catch (e: Exception) {
+                        android.util.Log.e("FirebaseSync", "Failed to delete file from RTDB", e)
                     }
-                } catch (e: Exception) {
-                    android.util.Log.e("FirebaseSync", "Failed to delete file from RTDB", e)
                 }
             }
         }
@@ -6229,6 +6263,7 @@ class AppViewModel(
             repository.insertFile(updated)
 
             viewModelScope.launch(Dispatchers.IO) {
+                if (!isSharedOrFriendFolder(file.path)) return@launch
                 try {
                     val dbUrl = com.example.api.FirebaseConfig.getDatabaseUrl(getApplication())
                     val database = com.google.firebase.database.FirebaseDatabase.getInstance(dbUrl)
@@ -6269,6 +6304,7 @@ class AppViewModel(
             repository.insertFile(updated)
 
             viewModelScope.launch(Dispatchers.IO) {
+                if (!isSharedOrFriendFolder(file.path)) return@launch
                 try {
                     val dbUrl = com.example.api.FirebaseConfig.getDatabaseUrl(getApplication())
                     val database = com.google.firebase.database.FirebaseDatabase.getInstance(dbUrl)
@@ -10216,6 +10252,61 @@ class AppViewModel(
         notificationManager.notify(System.currentTimeMillis().toInt(), notification)
     }
 
+fun createAndPackageSharedTaskFolder(
+    context: android.content.Context,
+    taskId: String,
+    task: Task,
+    creator: String,
+    taggedUsers: Set<String>
+): Pair<String, String> {
+    val folderDir = java.io.File(context.filesDir, "shared_task_folders/$taskId")
+    if (!folderDir.exists()) {
+        folderDir.mkdirs()
+    }
+
+    // 1. Create main text file containing details
+    val textFile = java.io.File(folderDir, "task_details.txt")
+    val sb = StringBuilder()
+    sb.append("TASK ID: ").append(taskId).append("\n")
+    sb.append("TITLE: ").append(task.title).append("\n")
+    sb.append("DESCRIPTION: ").append(task.description).append("\n")
+    sb.append("IS COMPLETED: ").append(task.isCompleted).append("\n")
+    sb.append("PRIORITY: ").append(task.priority).append("\n")
+    sb.append("DUE DATE: ").append(task.dueDateString).append("\n")
+    sb.append("CREATOR: ").append(creator).append("\n")
+    sb.append("TAGGED USERS: ").append(taggedUsers.joinToString(", ")).append("\n")
+    textFile.writeText(sb.toString())
+
+    // 2. Create structured meta.json for task indexing
+    val metaFile = java.io.File(folderDir, "meta.json")
+    val safeTitle = task.title.replace("\"", "\\\"").replace("\n", " ")
+    val safeDesc = task.description.replace("\"", "\\\"").replace("\n", " ")
+    val metaJson = """
+        {
+          "id": ${task.id},
+          "title": "$safeTitle",
+          "description": "$safeDesc",
+          "isCompleted": ${task.isCompleted},
+          "priority": "${task.priority}",
+          "dueDateString": "${task.dueDateString}",
+          "creator": "$creator",
+          "taggedUsers": [${taggedUsers.joinToString(",") { "\"$it\"" }}],
+          "folderPath": "shared_task_folders/$taskId"
+        }
+    """.trimIndent()
+    metaFile.writeText(metaJson)
+
+    // 3. Ensure attachments directory exists inside task folder
+    val attachmentsDir = java.io.File(folderDir, "attachments")
+    if (!attachmentsDir.exists()) {
+        attachmentsDir.mkdirs()
+    }
+
+    val folderLink = "file://${folderDir.absolutePath}"
+    val relativeFolderPath = "shared_task_folders/$taskId"
+    return Pair(folderLink, relativeFolderPath)
+}
+
     fun uploadSharedTaskToFirebase(task: Task) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -10232,13 +10323,26 @@ class AppViewModel(
                     myNickname = creator
                 ).toMutableSet()
                 
-                // Ensure creator is always included for self-sharing and personal backup
+                val taskId = "task_${task.id}"
+
+                // Only tasks that are shared between 2 different persons must be uploaded to RTDB!
+                val otherUsers = resolvedTags.filter { it.isNotBlank() && !it.equals(creator, ignoreCase = true) }
+                if (otherUsers.isEmpty()) {
+                    // PRIVATE TASK (No mentions of another person) -> NO RTDB INTERVENTION!
+                    try {
+                        database.getReference("shared_tasks").child(taskId).setValue(null)
+                        database.getReference("shared_tasks_index").child(creator).child(taskId).setValue(null)
+                        database.getReference("FOCUS_TIMMER").child("TASKS").child(taskId).setValue(null)
+                        database.getReference("FOCUS_TIMMER").child("USER").child(creator).child("TASKS").child(taskId).setValue(null)
+                    } catch (_: Exception) {}
+                    android.util.Log.d("SharedTasks", "Task $taskId is a private task (no other user mentions). Bypassing RTDB upload.")
+                    return@launch
+                }
+
                 if (creator.isNotBlank()) {
                     resolvedTags.add(creator)
                 }
-                
-                val taskId = "task_${task.id}"
-                
+
                 // Check completed date for 1 year RTDB deletion
                 var completedAt: Long? = null
                 val compMatch = Regex("""\[CompletedAt:\s*(\d+)\]""").find(task.description)
@@ -10311,17 +10415,22 @@ class AppViewModel(
                     }
                 }
                 
-                // Upload to shared_tasks and FOCUS_TIMMER structures
+                // Package task into a local folder with task_details.txt, meta.json, and attachments/
+                val (folderLink, relativeFolderPath) = createAndPackageSharedTaskFolder(getApplication(), taskId, task, creator, resolvedTags)
+
+                // Upload lightweight payload with folderLink reference to RTDB
                 val payload = mapOf(
                     "id" to task.id,
                     "title" to task.title,
-                    "description" to task.description,
                     "isCompleted" to task.isCompleted,
                     "priority" to task.priority,
                     "dueDateString" to task.dueDateString,
                     "creator" to creator,
                     "taggedUsers" to resolvedTags.toList(),
-                    "completionStates" to currentCompletions
+                    "completionStates" to currentCompletions,
+                    "folderLink" to folderLink,
+                    "folderPath" to relativeFolderPath,
+                    "hasFolderPayload" to true
                 )
                 
                 database.getReference("shared_tasks").child(taskId).setValue(payload)
@@ -10383,7 +10492,30 @@ class AppViewModel(
                                 viewModelScope.launch(Dispatchers.IO) {
                                     try {
                                         val title = taskSnapshot.child("title").getValue(String::class.java) ?: ""
-                                        val description = taskSnapshot.child("description").getValue(String::class.java) ?: ""
+                                        var description = taskSnapshot.child("description").getValue(String::class.java) ?: ""
+                                        val folderLink = taskSnapshot.child("folderLink").getValue(String::class.java) ?: ""
+                                        val folderPath = taskSnapshot.child("folderPath").getValue(String::class.java) ?: ""
+
+                                        val targetFolder = if (folderPath.isNotEmpty()) {
+                                            java.io.File(getApplication<android.app.Application>().filesDir, folderPath)
+                                        } else if (folderLink.startsWith("file://")) {
+                                            java.io.File(folderLink.removePrefix("file://"))
+                                        } else null
+
+                                        if (targetFolder != null && targetFolder.exists()) {
+                                            val detailsFile = java.io.File(targetFolder, "task_details.txt")
+                                            if (detailsFile.exists()) {
+                                                val fileContent = detailsFile.readText()
+                                                val descMarker = "DESCRIPTION: "
+                                                if (fileContent.contains(descMarker)) {
+                                                    val linesAfterDesc = fileContent.substringAfter(descMarker)
+                                                    val desc = linesAfterDesc.substringBefore("\nIS COMPLETED:")
+                                                    if (desc.isNotBlank()) {
+                                                        description = desc
+                                                    }
+                                                }
+                                            }
+                                        }
                                         val isCompleted = taskSnapshot.child("isCompleted").getValue(String::class.java)?.toBoolean() ?: (taskSnapshot.child("isCompleted").getValue(Boolean::class.java) ?: false)
                                         val priority = taskSnapshot.child("priority").getValue(String::class.java) ?: "MEDIUM"
                                         val dueDate = taskSnapshot.child("dueDateString").getValue(String::class.java) ?: ""

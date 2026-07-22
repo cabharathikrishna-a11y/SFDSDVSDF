@@ -125,6 +125,22 @@ class ChatRepository(
         return sent
     }
 
+    suspend fun insertMessageToCache(message: ChatMessage) {
+        try {
+            chatMessageDao?.insertMessage(message)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
+    suspend fun insertMessagesToCache(messages: List<ChatMessage>) {
+        try {
+            chatMessageDao?.insertMessages(messages)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+
     suspend fun editMessage(messageId: Long, newText: String): ChatMessage? {
         return try {
             val updated = SupabaseManager.client.from("messages")
