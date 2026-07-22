@@ -207,6 +207,26 @@ object GeminiClient {
         return key
     }
 
+    private suspend fun callWithFallback(
+        candidateModels: List<String>,
+        apiKey: String,
+        request: GeminiRequest
+    ): Pair<GeminiResponse, String> {
+        var lastException: Exception? = null
+        for (model in candidateModels) {
+            try {
+                val response = apiService.generateContent(model, apiKey, request)
+                if (response.candidates != null && response.candidates.isNotEmpty()) {
+                    return Pair(response, model)
+                }
+            } catch (e: Exception) {
+                android.util.Log.w("GeminiClient", "Model $model failed (${e.message}), trying next candidate...", e)
+                lastException = e
+            }
+        }
+        throw lastException ?: java.io.IOException("All candidate Gemini model endpoints failed.")
+    }
+
     suspend fun getGeminiResponse(prompt: String): String {
         val result = executeDeepaAi(prompt, DeepaAiMode.GENERAL)
         return result.text
@@ -247,58 +267,58 @@ object GeminiClient {
 
         return when (mode) {
             DeepaAiMode.GENERAL -> {
-                val targetModel = if (attachedMedia?.first?.startsWith("video/") == true || attachedMedia?.first?.startsWith("image/") == true) {
-                    "gemini-3.1-pro-preview"
+                val candidateModels = if (attachedMedia?.first?.startsWith("video/") == true || attachedMedia?.first?.startsWith("image/") == true) {
+                    listOf("gemini-2.5-flash", "gemini-2.5-pro", "gemini-3.1-pro-preview", "gemini-1.5-pro", "gemini-1.5-flash")
                 } else {
-                    "gemini-3.5-flash"
+                    listOf("gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-3.5-flash", "gemini-flash-latest", "gemini-2.5-pro")
                 }
                 val request = GeminiRequest(contents = contents, systemInstruction = systemInstruction)
-                val response = apiService.generateContent(targetModel, apiKey, request)
-                parseStandardResponse(response, targetModel)
+                val (response, modelUsed) = callWithFallback(candidateModels, apiKey, request)
+                parseStandardResponse(response, modelUsed)
             }
 
             DeepaAiMode.HIGH_THINKING -> {
-                val targetModel = "gemini-3.1-pro-preview"
+                val candidateModels = listOf("gemini-2.5-pro", "gemini-1.5-pro", "gemini-3.1-pro-preview", "gemini-2.5-flash")
                 val config = GeminiRequest.GenerationConfig(
                     thinkingConfig = GeminiRequest.ThinkingConfig(thinkingLevel = "HIGH")
                 )
                 val request = GeminiRequest(contents = contents, generationConfig = config, systemInstruction = systemInstruction)
-                val response = apiService.generateContent(targetModel, apiKey, request)
-                parseStandardResponse(response, targetModel)
+                val (response, modelUsed) = callWithFallback(candidateModels, apiKey, request)
+                parseStandardResponse(response, modelUsed)
             }
 
             DeepaAiMode.FAST_LOW_LATENCY -> {
-                val targetModel = "gemini-3.1-flash-lite-preview"
+                val candidateModels = listOf("gemini-2.5-flash", "gemini-1.5-flash", "gemini-3.1-flash-lite-preview", "gemini-2.0-flash")
                 val request = GeminiRequest(contents = contents, systemInstruction = systemInstruction)
-                val response = apiService.generateContent(targetModel, apiKey, request)
-                parseStandardResponse(response, targetModel)
+                val (response, modelUsed) = callWithFallback(candidateModels, apiKey, request)
+                parseStandardResponse(response, modelUsed)
             }
 
             DeepaAiMode.GOOGLE_SEARCH -> {
-                val targetModel = "gemini-3.5-flash"
+                val candidateModels = listOf("gemini-2.5-flash", "gemini-1.5-flash", "gemini-3.5-flash")
                 val tools = listOf(mapOf("googleSearch" to emptyMap<String, String>()))
                 val request = GeminiRequest(contents = contents, tools = tools, systemInstruction = systemInstruction)
-                val response = apiService.generateContent(targetModel, apiKey, request)
-                parseStandardResponse(response, targetModel)
+                val (response, modelUsed) = callWithFallback(candidateModels, apiKey, request)
+                parseStandardResponse(response, modelUsed)
             }
 
             DeepaAiMode.GOOGLE_MAPS -> {
-                val targetModel = "gemini-3.5-flash"
+                val candidateModels = listOf("gemini-2.5-flash", "gemini-1.5-flash", "gemini-3.5-flash")
                 val tools = listOf(mapOf("googleMaps" to emptyMap<String, String>()))
                 val request = GeminiRequest(contents = contents, tools = tools, systemInstruction = systemInstruction)
-                val response = apiService.generateContent(targetModel, apiKey, request)
-                parseStandardResponse(response, targetModel)
+                val (response, modelUsed) = callWithFallback(candidateModels, apiKey, request)
+                parseStandardResponse(response, modelUsed)
             }
 
             DeepaAiMode.IMAGE_STUDIO -> {
-                val targetModel = if (resolution == "4K") "gemini-3-pro-image-preview" else "gemini-3.1-flash-image-preview"
+                val candidateModels = if (resolution == "4K") listOf("gemini-2.5-flash-image", "gemini-3-pro-image-preview", "gemini-3.1-flash-image-preview") else listOf("gemini-2.5-flash-image", "gemini-3.1-flash-image-preview")
                 val config = GeminiRequest.GenerationConfig(
                     responseModalities = listOf("TEXT", "IMAGE"),
                     imageConfig = GeminiRequest.ImageConfig(aspectRatio = aspectRatio, imageSize = resolution)
                 )
                 val request = GeminiRequest(contents = contents, generationConfig = config, systemInstruction = systemInstruction)
-                val response = apiService.generateContent(targetModel, apiKey, request)
-                parseStandardResponse(response, targetModel)
+                val (response, modelUsed) = callWithFallback(candidateModels, apiKey, request)
+                parseStandardResponse(response, modelUsed)
             }
 
             DeepaAiMode.VEO_VIDEO -> {

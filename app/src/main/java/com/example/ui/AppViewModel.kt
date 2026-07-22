@@ -8417,8 +8417,8 @@ class AppViewModel(
             } catch (e: Exception) {
                 android.util.Log.e("AppViewModel", "Gemini online call failed", e)
                 val fallbackText = processQueryOffline(userText)
-                processedResponse = executeAiActions("⚠️ Deepa AI Cloud connection notice (${e.message ?: "Check Secrets / Internet"}). Fallback response:\n\n$fallbackText")
-                actualModelUsed = "Deepa Online Fallback"
+                processedResponse = executeAiActions(fallbackText)
+                actualModelUsed = "Deepa AI (Local Engine)"
             }
 
             val aiMsg = ChatMessage(

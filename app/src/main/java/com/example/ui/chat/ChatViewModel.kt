@@ -42,7 +42,15 @@ class ChatViewModel(
     val currentUserId: String = "user_me"
 ) : ViewModel() {
 
-    val studyGroups = listOf(
+    private val localRepository = try {
+        val app = com.example.MainApplication.instance
+        val db = com.example.data.AppDatabase.getInstance(app)
+        com.example.data.LocalRepository(db, app)
+    } catch (e: Exception) {
+        null
+    }
+
+    private val initialStudyGroups = listOf(
         ChatOption(
             id = "group_main",
             name = "Android Dev Study Group",
@@ -85,7 +93,7 @@ class ChatViewModel(
         )
     )
 
-    val directMessageMembers = listOf(
+    private val initialDirectMessageMembers = listOf(
         ChatOption(
             id = "dm_alex_dev",
             name = "Alex Dev",
@@ -125,44 +133,84 @@ class ChatViewModel(
             iconEmoji = "🛡️",
             isOnline = false,
             roleTitle = "Mentor"
-        ),
-        ChatOption(
-            id = "dm_community_user_1",
-            name = "Community User 1",
-            type = ChatOptionType.DIRECT_MESSAGE,
-            description = "Android Enthusiast",
-            memberUserId = "community_user_1",
-            iconEmoji = "🙋",
-            isOnline = false,
-            roleTitle = "Student Member"
-        ),
-        ChatOption(
-            id = "dm_community_user_2",
-            name = "Community User 2",
-            type = ChatOptionType.DIRECT_MESSAGE,
-            description = "Kotlin Developer",
-            memberUserId = "community_user_2",
-            iconEmoji = "🙋",
-            isOnline = true,
-            roleTitle = "Student Member"
-        ),
-        ChatOption(
-            id = "dm_qa_tester_3",
-            name = "QA Tester 3",
-            type = ChatOptionType.DIRECT_MESSAGE,
-            description = "Quality Assurance",
-            memberUserId = "qa_tester_3",
-            iconEmoji = "🧪",
-            isOnline = true,
-            roleTitle = "Tester"
         )
     )
 
-    private val _selectedChatOption = MutableStateFlow<ChatOption>(studyGroups[0])
+    private val _studyGroups = MutableStateFlow<List<ChatOption>>(initialStudyGroups)
+    val studyGroups: StateFlow<List<ChatOption>> = _studyGroups.asStateFlow()
+
+    private val _directMessageMembers = MutableStateFlow<List<ChatOption>>(initialDirectMessageMembers)
+    val directMessageMembers: StateFlow<List<ChatOption>> = _directMessageMembers.asStateFlow()
+
+    private val _selectedChatOption = MutableStateFlow<ChatOption>(initialStudyGroups[0])
     val selectedChatOption: StateFlow<ChatOption> = _selectedChatOption.asStateFlow()
 
     private val _showChatOptionsSheet = MutableStateFlow(false)
     val showChatOptionsSheet: StateFlow<Boolean> = _showChatOptionsSheet.asStateFlow()
+
+    init {
+        loadInitialMessagesAndSubscribe()
+        listenToRtdbChatHistory()
+        observeAppContacts()
+    }
+
+    private fun observeAppContacts() {
+        viewModelScope.launch(Dispatchers.IO) {
+            localRepository?.allContacts?.collect { contacts ->
+                val contactDms = contacts.map { contact ->
+                    val fullName = "${contact.firstName} ${contact.lastName}".trim().ifBlank {
+                        contact.phone.ifBlank { "Contact #${contact.id}" }
+                    }
+                    ChatOption(
+                        id = "dm_contact_${contact.id}",
+                        name = fullName,
+                        type = ChatOptionType.DIRECT_MESSAGE,
+                        description = contact.jobTitle.ifBlank { contact.email.ifBlank { contact.phone.ifBlank { "App Contact" } } },
+                        memberUserId = "contact_${contact.id}",
+                        iconEmoji = "👤",
+                        isOnline = true,
+                        roleTitle = contact.folder.ifBlank { "Contact" }
+                    )
+                }
+                
+                val currentDms = _directMessageMembers.value
+                val updatedDms = (currentDms + contactDms).distinctBy { it.id }
+                _directMessageMembers.value = updatedDms
+            }
+        }
+    }
+
+    fun createCustomStudyGroup(name: String, description: String, iconEmoji: String = "🎓") {
+        if (name.isBlank()) return
+        val newGroup = ChatOption(
+            id = "group_custom_${System.currentTimeMillis()}",
+            name = name.trim(),
+            type = ChatOptionType.STUDY_GROUP,
+            description = description.ifBlank { "Custom Study Group" },
+            iconEmoji = iconEmoji.ifBlank { "🎓" },
+            memberCount = 1
+        )
+        _studyGroups.value = _studyGroups.value + newGroup
+        selectChatOption(newGroup)
+    }
+
+    fun createCustomContactDM(firstName: String, lastName: String, email: String = "", phone: String = "") {
+        if (firstName.isBlank() && lastName.isBlank() && phone.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val newContact = com.example.data.Contact(
+                    firstName = firstName.trim(),
+                    lastName = lastName.trim(),
+                    email = email.trim(),
+                    phone = phone.trim(),
+                    folder = "Study Group"
+                )
+                localRepository?.insertContact(newContact)
+            } catch (e: Exception) {
+                android.util.Log.e("ChatViewModel", "Failed inserting contact for DM", e)
+            }
+        }
+    }
 
     fun selectChatOption(option: ChatOption) {
         _selectedChatOption.value = option

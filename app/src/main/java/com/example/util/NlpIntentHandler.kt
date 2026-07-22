@@ -153,23 +153,30 @@ object NlpIntentHandler {
                 })
             }
 
-            val url = "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=$apiKey"
-            val requestBody = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
-            val request = Request.Builder()
-                .url(url)
-                .post(requestBody)
-                .build()
+            val candidateModels = listOf("gemini-2.5-flash", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-3.5-flash")
+            for (model in candidateModels) {
+                val url = "https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent?key=$apiKey"
+                val requestBody = jsonPayload.toString().toRequestBody("application/json; charset=utf-8".toMediaType())
+                val request = Request.Builder()
+                    .url(url)
+                    .post(requestBody)
+                    .build()
 
-            val response = httpClient.newCall(request).execute()
-            val responseBodyStr = response.body?.string()
+                try {
+                    val response = httpClient.newCall(request).execute()
+                    val responseBodyStr = response.body?.string()
 
-            if (response.isSuccessful && !responseBodyStr.isNullOrEmpty()) {
-                val parsedResult = parseGeminiResponseJson(responseBodyStr, currentDateStr)
-                if (parsedResult != NlpIntentResult.None) {
-                    return@withContext parsedResult
+                    if (response.isSuccessful && !responseBodyStr.isNullOrEmpty()) {
+                        val parsedResult = parseGeminiResponseJson(responseBodyStr, currentDateStr)
+                        if (parsedResult != NlpIntentResult.None) {
+                            return@withContext parsedResult
+                        }
+                    } else {
+                        android.util.Log.w("NlpIntentHandler", "Model $model HTTP error ${response.code}: $responseBodyStr")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.w("NlpIntentHandler", "Model $model failed: ${e.message}")
                 }
-            } else {
-                android.util.Log.w("NlpIntentHandler", "Gemini HTTP error ${response.code}: $responseBodyStr")
             }
         } catch (e: Exception) {
             android.util.Log.e("NlpIntentHandler", "Error executing Gemini intent recognition", e)

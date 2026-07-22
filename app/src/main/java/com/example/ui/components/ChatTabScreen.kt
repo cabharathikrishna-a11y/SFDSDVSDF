@@ -203,6 +203,8 @@ fun ChatTabScreen(
 
     val selectedChatOption by chatViewModel.selectedChatOption.collectAsState()
     val showChatOptionsSheet by chatViewModel.showChatOptionsSheet.collectAsState()
+    val studyGroups by chatViewModel.studyGroups.collectAsState()
+    val directMessageMembers by chatViewModel.directMessageMembers.collectAsState()
 
     val isLoading by chatViewModel.isLoading.collectAsState()
     val isLoadingMore by chatViewModel.isLoadingMore.collectAsState()
@@ -504,7 +506,7 @@ fun ChatTabScreen(
                     )
                 }
 
-                items(chatViewModel.studyGroups) { group ->
+                items(studyGroups) { group ->
                     val isSelected = selectedChatOption.id == group.id
                     FilterChip(
                         selected = isSelected,
@@ -519,7 +521,7 @@ fun ChatTabScreen(
                     )
                 }
 
-                items(chatViewModel.directMessageMembers) { member ->
+                items(directMessageMembers) { member ->
                     val isSelected = selectedChatOption.id == member.id
                     FilterChip(
                         selected = isSelected,
@@ -1296,9 +1298,11 @@ fun ChatTabScreen(
     if (showChatOptionsSheet) {
         ChatOptionsBottomSheetDialog(
             selectedOption = selectedChatOption,
-            studyGroups = chatViewModel.studyGroups,
-            directMessageMembers = chatViewModel.directMessageMembers,
+            studyGroups = studyGroups,
+            directMessageMembers = directMessageMembers,
             onSelectOption = { chatViewModel.selectChatOption(it) },
+            onCreateStudyGroup = { name, desc -> chatViewModel.createCustomStudyGroup(name, desc) },
+            onCreateContactDM = { first, last, phone -> chatViewModel.createCustomContactDM(first, last, "", phone) },
             onDismiss = { chatViewModel.closeChatOptionsSheet() }
         )
     }
@@ -2532,10 +2536,121 @@ fun ChatOptionsBottomSheetDialog(
     studyGroups: List<ChatOption>,
     directMessageMembers: List<ChatOption>,
     onSelectOption: (ChatOption) -> Unit,
+    onCreateStudyGroup: (String, String) -> Unit = { _, _ -> },
+    onCreateContactDM: (String, String, String) -> Unit = { _, _, _ -> },
     onDismiss: () -> Unit
 ) {
     var selectedTab by remember { mutableStateOf(0) } // 0 = Study Groups, 1 = Private DMs
     var searchQuery by remember { mutableStateOf("") }
+
+    var showCreateGroupDialog by remember { mutableStateOf(false) }
+    var newGroupName by remember { mutableStateOf("") }
+    var newGroupDesc by remember { mutableStateOf("") }
+
+    var showAddContactDialog by remember { mutableStateOf(false) }
+    var newContactFirst by remember { mutableStateOf("") }
+    var newContactLast by remember { mutableStateOf("") }
+    var newContactPhone by remember { mutableStateOf("") }
+
+    if (showCreateGroupDialog) {
+        AlertDialog(
+            onDismissRequest = { showCreateGroupDialog = false },
+            containerColor = Charcoal,
+            title = { Text("🎓 Create Study Group", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = newGroupName,
+                        onValueChange = { newGroupName = it },
+                        label = { Text("Group Name *", color = TextSecondary) },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = WaterBlue, unfocusedBorderColor = Color.Gray),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = newGroupDesc,
+                        onValueChange = { newGroupDesc = it },
+                        label = { Text("Description / Topic", color = TextSecondary) },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = WaterBlue, unfocusedBorderColor = Color.Gray),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newGroupName.isNotBlank()) {
+                            onCreateStudyGroup(newGroupName, newGroupDesc)
+                            newGroupName = ""
+                            newGroupDesc = ""
+                            showCreateGroupDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = WaterBlue, contentColor = Color.Black)
+                ) {
+                    Text("Create Group", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreateGroupDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    if (showAddContactDialog) {
+        AlertDialog(
+            onDismissRequest = { showAddContactDialog = false },
+            containerColor = Charcoal,
+            title = { Text("👤 Add Contact for DM", color = TextPrimary, fontSize = 16.sp, fontWeight = FontWeight.Bold) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = newContactFirst,
+                        onValueChange = { newContactFirst = it },
+                        label = { Text("First Name *", color = TextSecondary) },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = WaterBlue, unfocusedBorderColor = Color.Gray),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = newContactLast,
+                        onValueChange = { newContactLast = it },
+                        label = { Text("Last Name", color = TextSecondary) },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = WaterBlue, unfocusedBorderColor = Color.Gray),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    OutlinedTextField(
+                        value = newContactPhone,
+                        onValueChange = { newContactPhone = it },
+                        label = { Text("Phone / Email", color = TextSecondary) },
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = WaterBlue, unfocusedBorderColor = Color.Gray),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (newContactFirst.isNotBlank() || newContactPhone.isNotBlank()) {
+                            onCreateContactDM(newContactFirst, newContactLast, newContactPhone)
+                            newContactFirst = ""
+                            newContactLast = ""
+                            newContactPhone = ""
+                            showAddContactDialog = false
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF9C27B0), contentColor = Color.White)
+                ) {
+                    Text("Save Contact & DM", fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAddContactDialog = false }) {
+                    Text("Cancel", color = TextSecondary)
+                }
+            }
+        )
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2626,6 +2741,32 @@ fun ChatOptionsBottomSheetDialog(
         },
         text = {
             Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp)
+                ) {
+                    Text(
+                        text = if (selectedTab == 0) "Available Study Groups" else "Direct Messages",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextSecondary
+                    )
+                    TextButton(
+                        onClick = {
+                            if (selectedTab == 0) showCreateGroupDialog = true else showAddContactDialog = true
+                        },
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(
+                            text = if (selectedTab == 0) "+ New Study Group" else "+ Add Contact",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (selectedTab == 0) WaterBlue else Color(0xFFAB47BC)
+                        )
+                    }
+                }
+
                 // Search Field
                 OutlinedTextField(
                     value = searchQuery,
