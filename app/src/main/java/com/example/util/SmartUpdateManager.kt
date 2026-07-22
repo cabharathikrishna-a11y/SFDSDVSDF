@@ -457,6 +457,11 @@ object SmartUpdateManager {
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to stop FocusForegroundService", e)
                 }
+                try {
+                    context.stopService(Intent(context, com.example.service.NotificationBlockerService::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to stop NotificationBlockerService", e)
+                }
 
                 // Dismiss all notifications to prevent SystemUI asset loading crashes during package upgrade
                 try {

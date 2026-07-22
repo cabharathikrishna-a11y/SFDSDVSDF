@@ -294,7 +294,7 @@ object AppUpdateManager {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 val channel = NotificationChannel(
                     channelId,
-                    "System Updates",
+                    "App Updates",
                     NotificationManager.IMPORTANCE_DEFAULT
                 )
                 notificationManager.createNotificationChannel(channel)
@@ -780,13 +780,7 @@ object AppUpdateManager {
                         cloudVersion = finalTargetVersionCode,
                         localVersion = currentCode
                     )
-                    if (manualCheck && !finalApkFileId.isNullOrBlank()) {
-                        Log.i(TAG, "Manual update check: forcing download of resolved update link $finalApkFileId.")
-                        startDownloadAndInstall(context, finalApkFileId)
-                    } else if (!manualCheck) {
-                        // Return to idle after a while if auto-checked
-                        _updateStatus.value = UpdateStatus.Idle
-                    }
+                    Log.i(TAG, "Cloud version ($finalTargetVersionCode) is same as or lower than app version ($currentCode). Skipping APK download.")
                 } else {
                     // All requests failed to get a valid version code
                     if (errorLogs.isNotEmpty()) {
@@ -849,15 +843,7 @@ object AppUpdateManager {
                 if (currentStatus is UpdateStatus.NewVersionAvailable) {
                     startDownloadAndInstall(context, currentStatus.apkFileId)
                 } else {
-                    // Even if Firebase states no newer version exists compared to the package code,
-                    // we still fetch/resolve the current cloud file and force its download.
-                    _updateStatus.value = UpdateStatus.SecuringData
-                    val latestFileId = resolveApkFileId(context, null)
-                    if (!latestFileId.isNullOrBlank()) {
-                        downloadAndInstallUpdate(context, latestFileId)
-                    } else {
-                        _updateStatus.value = UpdateStatus.Error("Failed to resolve latest update file from Firebase config for force-redownload.")
-                    }
+                    Log.i(TAG, "Firebase version is same as or lower than app version. Skipping APK download.")
                 }
             } catch (e: Exception) {
                 Log.e(TAG, "Force redownload failed", e)
@@ -1177,7 +1163,7 @@ object AppUpdateManager {
                     if (isUpdateVersionGreater(context, apkFile)) {
                         Log.i(TAG, "Valid update APK already fully downloaded: ${apkFile.absolutePath}")
                         _updateStatus.value = UpdateStatus.ReadyToInstall(apkFile)
-                        showCompletionNotification(context, "System Update Downloaded", "Life OS update is ready to install. Tap to proceed.", true)
+                        showCompletionNotification(context, "App Update Downloaded", "Life OS update is ready to install. Tap to proceed.", true)
                         return@withContext
                     } else {
                         Log.w(TAG, "Already downloaded APK version is not greater than current version. Deleting.")
@@ -1237,7 +1223,7 @@ object AppUpdateManager {
 
                 if (patchAppliedSuccess) {
                     _updateStatus.value = UpdateStatus.ReadyToInstall(apkFile)
-                    showCompletionNotification(context, "System Update Prepared (bsdiff)", "Life OS update patched successfully and is ready to install.", true)
+                    showCompletionNotification(context, "App Update Prepared (bsdiff)", "Life OS update patched successfully and is ready to install.", true)
                     return@withContext
                 }
                 
@@ -1442,7 +1428,7 @@ object AppUpdateManager {
                 Log.i(TAG, "Successfully downloaded update APK to: ${apkFile.absolutePath}")
                 setReadyApkPath(context, apkFile.absolutePath)
                 _updateStatus.value = UpdateStatus.ReadyToInstall(apkFile)
-                showCompletionNotification(context, "System Update Downloaded", "Life OS update is ready to install. Tap to proceed.", true)
+                showCompletionNotification(context, "App Update Downloaded", "Life OS update is ready to install. Tap to proceed.", true)
 
             } catch (e: Exception) {
                 Log.e(TAG, "Error downloading update", e)
@@ -1479,6 +1465,11 @@ object AppUpdateManager {
                     context.stopService(Intent(context, com.example.service.FocusForegroundService::class.java))
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to stop FocusForegroundService", e)
+                }
+                try {
+                    context.stopService(Intent(context, com.example.service.NotificationBlockerService::class.java))
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to stop NotificationBlockerService", e)
                 }
 
                 // Dismiss all notifications to prevent SystemUI asset loading crashes during package upgrade
@@ -1673,7 +1664,7 @@ object AppUpdateManager {
             }
 
             val builder = NotificationCompat.Builder(context, channelId)
-                .setContentTitle("Downloading System Update")
+                .setContentTitle("Downloading App Update")
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setOnlyAlertOnce(true)
                 .setOngoing(true)

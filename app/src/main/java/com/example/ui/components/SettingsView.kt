@@ -194,7 +194,7 @@ fun SettingsView(viewModel: AppViewModel, modifier: Modifier = Modifier) {
                 items = listOf(
                     SettingsRowData("1. GENERAL SYSTEM", "Tab alignment, navigation bar reordering, style configurations", Icons.Default.Settings, Color(0xFF2196F3)) { activePage = 1 },
                     SettingsRowData("DIAGNOSTICS & BACKGROUND", "Fix stopwatch lockscreen freeze & background recording on Samsung/Oppo/Lenovo/Moto", Icons.Default.Info, Color(0xFFE53935)) { activePage = 17 },
-                    SettingsRowData("SYSTEM UPDATE CENTER", "Check for updates, manage background downloads, authenticate tester", Icons.Default.Refresh, Color(0xFF4CAF50)) { activePage = 16 },
+                    SettingsRowData("APP UPDATE CENTER", "Check for updates, manage background downloads, authenticate tester", Icons.Default.Refresh, Color(0xFF4CAF50)) { activePage = 16 },
                     SettingsRowData("2. DEEPA AI BRAIN", "Offline model caching, memories vault management", Icons.Default.Face, Color(0xFF00E5FF)) { activePage = 11 },
                     SettingsRowData("3. BACKUP & RESTORE", "JSON manual database import & security exports", Icons.Default.Refresh, Color(0xFFFFB300)) { activePage = 12 },
                     SettingsRowData("KEYBOARD SHORTCUTS HELP", "View all connected physical keyboard shortcuts & mappings", Icons.Default.Keyboard, Color(0xFF9C27B0)) { activePage = 99 }
@@ -5484,7 +5484,7 @@ fun SettingsDeepLinksPage(
                         "Sync Google Calendar" to "lifeos://action/sync_calendar",
                         "Auto-backup Google Drive" to "lifeos://action/backup_drive",
                         "Force Contacts Device Sync" to "lifeos://action/force_contacts_sync",
-                        "Check App System Updates" to "lifeos://action/check_updates"
+                        "Check App Updates" to "lifeos://action/check_updates"
                     )
 
                     actions.forEach { (name, link) ->
@@ -9849,7 +9849,7 @@ fun SettingsUpdatesPage(
 
     SettingsPageScope {
         SettingsSubpageWorkspace(
-            title = "System Update Center",
+            title = "App Update Center",
             description = "Manage Firebase App Distribution updates, automated downloads, and restore backups.",
             onBack = onBack
         ) {
@@ -10047,13 +10047,13 @@ fun SettingsUpdatesPage(
                         Spacer(modifier = Modifier.height(4.dp))
 
                         val statusLabel = when (val state = updateStatus) {
-                            is UpdateStatus.Idle -> "System is up to date"
+                            is UpdateStatus.Idle -> "App is up to date"
                             is UpdateStatus.Checking -> "Checking for updates..."
                             is UpdateStatus.SecuringData -> "Securing user data and performing auto-backup..."
-                            is UpdateStatus.Downloading -> "Downloading system update: ${(state.progress * 100).toInt()}%"
-                            is UpdateStatus.ReadyToInstall -> "System Update Downloaded & Ready"
+                            is UpdateStatus.Downloading -> "Downloading app update: ${(state.progress * 100).toInt()}%"
+                            is UpdateStatus.ReadyToInstall -> "App Update Downloaded & Ready"
                             is UpdateStatus.NewVersionAvailable -> "New Update Available: Build ${state.versionId}"
-                            is UpdateStatus.NoUpdateAvailable -> "Your system is up to date (Build ${state.localVersion})"
+                            is UpdateStatus.NoUpdateAvailable -> "Your app is up to date (Build ${state.localVersion})"
                             is UpdateStatus.Error -> "Check failed: ${state.message}"
                         }
 
@@ -10307,7 +10307,7 @@ fun SettingsUpdatesPage(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text("Force System Updates", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("Force App Updates", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.Bold)
                                 Text("Disallow bypassing updates when a new critical build is available.", color = Color.Gray, fontSize = 11.sp)
                             }
                             Switch(
@@ -10341,7 +10341,7 @@ fun SettingsUpdatesPage(
                         )
 
                         Text(
-                            text = "To prevent infinite installation loops on GitHub automated builds, Life OS tracks your current running version code independently from the hardcoded package codebase. Adjust this value to bypass or enable system updates manually.",
+                            text = "To prevent infinite installation loops on GitHub automated builds, Life OS tracks your current running version code independently from the hardcoded package codebase. Adjust this value to bypass or enable app updates manually.",
                             color = Color.Gray,
                             fontSize = 11.sp
                         )
@@ -11682,7 +11682,7 @@ fun PermissionOnboardingView(viewModel: AppViewModel) {
             // 6. Install Unknown Apps Permission Section (Mandatory)
             PermissionCard(
                 title = "Install App Updates (Mandatory)",
-                description = "Required to automatically install downloaded Life OS system updates. Without this, the app cannot update itself in-place.",
+                description = "Required to automatically install downloaded Life OS app updates. Without this, the app cannot update itself in-place.",
                 isGranted = hasPackageInstallPermission,
                 icon = Icons.Default.SystemUpdate,
                 accentColor = if (hasPackageInstallPermission) SuccessGreen else AlertRed,
@@ -13398,7 +13398,7 @@ fun SettingsKeyboardShortcutsPage() {
         val settingsShortcuts = listOf(
             "Alt + G  (or Alt + 1)" to "Open General System Settings",
             "Alt + D  (or Alt + 2)" to "Open Diagnostics & Background",
-            "Alt + U  (or Alt + 3)" to "Open System Update Center",
+            "Alt + U  (or Alt + 3)" to "Open App Update Center",
             "Alt + B  (or Alt + 4)" to "Open Deepa AI Brain Settings",
             "Alt + R  (or Alt + 5)" to "Open Backup & Restore Center",
             "Alt + T  (or Alt + 6)" to "Open Timer Configuration",

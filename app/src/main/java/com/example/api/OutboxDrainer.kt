@@ -65,7 +65,7 @@ object OutboxDrainer {
                 .build()
             androidx.work.WorkManager.getInstance(context).enqueueUniqueWork(
                 "OutboxDrainerWork",
-                androidx.work.ExistingWorkPolicy.REPLACE,
+                androidx.work.ExistingWorkPolicy.KEEP,
                 workRequest
             )
             Log.d("OutboxDrainer", "Enqueued OneTimeWorkRequest for OutboxDrainerWorker and started continuous daemon.")

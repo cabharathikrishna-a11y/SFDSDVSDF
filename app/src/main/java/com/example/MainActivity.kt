@@ -353,7 +353,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.size(24.dp)
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("System Update Ready", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
+                                Text("App Update Ready", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = Color.White)
                             }
                         },
                         text = {

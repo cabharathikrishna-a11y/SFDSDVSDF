@@ -871,7 +871,19 @@ val MIGRATION_26_27 = object : Migration(26, 27) {
 val MIGRATION_27_28 = object : Migration(27, 28) {
     override fun migrate(database: SupportSQLiteDatabase) {
         try {
-            database.execSQL("CREATE TABLE IF NOT EXISTS `chat_messages` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `senderId` TEXT NOT NULL, `text` TEXT NOT NULL, `timestamp` INTEGER NOT NULL, `status` TEXT NOT NULL, `isPinned` INTEGER NOT NULL, `reactionsJson` TEXT NOT NULL, `replyToMessageId` INTEGER, `replyToText` TEXT, `replySenderName` TEXT)")
+            database.execSQL("DROP TABLE IF EXISTS `chat_messages`")
+            database.execSQL("CREATE TABLE IF NOT EXISTS `chat_messages` (`id` INTEGER NOT NULL, `sender_id` TEXT NOT NULL, `text` TEXT NOT NULL, `status` TEXT NOT NULL, `created_at` TEXT, `reactions` TEXT NOT NULL, `is_pinned` INTEGER NOT NULL, `reply_to_id` INTEGER, `reply_to_text` TEXT, `reply_to_sender` TEXT, PRIMARY KEY(`id`))")
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+    }
+}
+
+val MIGRATION_28_29 = object : Migration(28, 29) {
+    override fun migrate(database: SupportSQLiteDatabase) {
+        try {
+            database.execSQL("DROP TABLE IF EXISTS `chat_messages`")
+            database.execSQL("CREATE TABLE IF NOT EXISTS `chat_messages` (`id` INTEGER NOT NULL, `sender_id` TEXT NOT NULL, `text` TEXT NOT NULL, `status` TEXT NOT NULL, `created_at` TEXT, `reactions` TEXT NOT NULL, `is_pinned` INTEGER NOT NULL, `reply_to_id` INTEGER, `reply_to_text` TEXT, `reply_to_sender` TEXT, PRIMARY KEY(`id`))")
         } catch (e: Exception) {
             e.printStackTrace()
         }
@@ -918,7 +930,7 @@ val autoMigrations = (13..19).map { startVersion ->
         SyllabusCompletionVault::class,
         com.example.model.ChatMessage::class
     ],
-    version = 28,
+    version = 29,
     exportSchema = true
 )
 @TypeConverters(TimelineConverters::class)
@@ -953,17 +965,34 @@ abstract class AppDatabase : RoomDatabase() {
 
         fun getInstance(context: android.content.Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
-                val instance = androidx.room.Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java, "life_os_database"
-                )
-                .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
-                .fallbackToDestructiveMigration()
-                .fallbackToDestructiveMigrationOnDowngrade()
-                .addMigrations(MIGRATION_12_13, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23, MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27, MIGRATION_27_28, *autoMigrations)
-                .build()
-                INSTANCE = instance
-                instance
+                try {
+                    val instance = androidx.room.Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java, "life_os_database"
+                    )
+                    .setJournalMode(RoomDatabase.JournalMode.WRITE_AHEAD_LOGGING)
+                    .fallbackToDestructiveMigration()
+                    .fallbackToDestructiveMigrationOnDowngrade()
+                    .addMigrations(
+                        MIGRATION_12_13, MIGRATION_20_21, MIGRATION_21_22, MIGRATION_22_23,
+                        MIGRATION_23_24, MIGRATION_24_25, MIGRATION_25_26, MIGRATION_26_27,
+                        MIGRATION_27_28, MIGRATION_28_29, *autoMigrations
+                    )
+                    .build()
+                    INSTANCE = instance
+                    instance
+                } catch (e: Exception) {
+                    android.util.Log.e("AppDatabase", "Database initialization failed, destructive fallback forced", e)
+                    context.deleteDatabase("life_os_database")
+                    val fallbackInstance = androidx.room.Room.databaseBuilder(
+                        context.applicationContext,
+                        AppDatabase::class.java, "life_os_database"
+                    )
+                    .fallbackToDestructiveMigration()
+                    .build()
+                    INSTANCE = fallbackInstance
+                    fallbackInstance
+                }
             }
         }
     }
